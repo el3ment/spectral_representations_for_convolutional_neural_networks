@@ -1,6 +1,19 @@
 # Purpose
 This repository is an implementation of the paper [Spectral Representations for Convolutional Neural Networks](http://arxiv.org/abs/1506.03767) in [Tensorflow](http://tensorflow.org/)
 
+# Install
+### Installing Tensorflow with GPU support:
+```bash
+export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.9.0rc0-cp27-none-linux_x86_64.whl
+sudo pip install --upgrade $TF_BINARY_URL
+```
+
+### Installing python packages:
+```bash
+pip install tqdm
+conda install opencv
+```
+
 # Status
 Currently, the spectral parametrization is resulting in filters that are inferior to the spatial parametrization and spectral pooling has not been implemented
 
@@ -19,8 +32,7 @@ pixel = spatial_filters[0, 0].real
 freq = spectral_filters[0, 0]
 pixel_to_freq = np.fft.fft2(pixel).real
 freq_to_pixel = np.fft.ifft2(freq).real
-if np.abs(np.max(pixel) - np.max(freq_to_pixel)) > 1e-5 and \
-                np.abs(np.min(freq.real) - np.max(pixel_to_freq)) > 1e-5:
+if np.abs(np.max(pixel) - np.max(freq_to_pixel)) > 1e-5 and np.abs(np.min(freq.real) - np.max(pixel_to_freq)) > 1e-5:
     print 'spatial(min:{} max:{})  spectral_to_spatial(min:{} max:{}) '.format(np.min(pixel),
                                                                                np.max(pixel),
                                                                                np.min(freq_to_pixel),
