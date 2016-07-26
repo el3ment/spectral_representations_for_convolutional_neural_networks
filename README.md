@@ -1,14 +1,20 @@
+# Purpose
+This repository is an implementation of the paper [Spectral Representations for Convolutional Neural Networks](http://arxiv.org/abs/1506.03767) in [Tensorflow](http://tensorflow.org/)
 
+# Status
+Currently, the spectral parametrization is resulting in filters that are inferior to the spatial parametrization and spectral pooling has not been implemented
+
+# Findings and Tests
 Tensorflow's FFT and IFFT gradients are inverses of one another.
-To confirm this, the following code was added to `conv2d()`
-```
+To confirm this, the following code should be added to `conv2d()`
+```python
     spatial_filter_fft = tf.real(tf.batch_ifft2d(tf.batch_fft2d(tf.complex(spatial_filter_for_fft, spatial_filter_for_fft * 0.0))))
     spatial_filter = tf.transpose(spatial_filter_fft, [2, 3, 0, 1])
 ```
 
 Tensorflow's FFT and IFFT  operations are equivalent to numpy. 
-To confirm this, the following code was added to `train()`.
-```
+To confirm this, the following code should be added to `train()`.
+```python
     pixel = spatial_filters[0, 0].real
     freq = spectral_filters[0, 0]
     pixel_to_freq = np.fft.fft2(pixel).real
