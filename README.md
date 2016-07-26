@@ -9,6 +9,7 @@ sudo pip install --upgrade $TF_BINARY_URL
 ```
 
 ### Installing python packages:
+It's best to install [Anaconda](https://www.continuum.io/downloads) which comes with numpy
 ```bash
 pip install tqdm
 conda install opencv
