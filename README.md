@@ -1,12 +1,14 @@
 
 Tensorflow's FFT and IFFT gradients are inverses of one another.
 To confirm this, the following code was added to `conv2d()`
+```
     spatial_filter_fft = tf.real(tf.batch_ifft2d(tf.batch_fft2d(tf.complex(spatial_filter_for_fft, spatial_filter_for_fft * 0.0))))
     spatial_filter = tf.transpose(spatial_filter_fft, [2, 3, 0, 1])
-
+```
 
 Tensorflow's FFT and IFFT  operations are equivalent to numpy. 
 To confirm this, the following code was added to `train()`.
+```
     pixel = spatial_filters[0, 0].real
     freq = spectral_filters[0, 0]
     pixel_to_freq = np.fft.fft2(pixel).real
@@ -20,4 +22,5 @@ To confirm this, the following code was added to `train()`.
         print 'spectral(min:{} max:{}) spatial_to_spectral(min:{} max:{})'.format(np.min(freq.real),
                                                                                   np.max(freq.real),
                                                                                   np.min(pixel_to_freq),
-                                                                              np.max(pixel_to_freq))
+                                                                                  np.max(pixel_to_freq))
+```
