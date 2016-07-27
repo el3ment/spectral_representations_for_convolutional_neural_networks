@@ -19,6 +19,17 @@ conda install opencv
 Currently, the spectral parametrization is resulting in filters that are inferior to the spatial parametrization and spectral pooling has not been implemented
 
 # Findings and Tests
+Initializing spectral filters to be the final filter learned by the spatial parameterization is stable.
+To confirm this, the following code in the main loop should be replaced:
+```
+fft = FFTConvTest(operations='fft')
+```
+with:
+```python
+fft = FFTConvTest(operations='fft', initialization={'conv1': baseline.spectral_conv1.eval(session=baseline.sess),
+                                                           'conv2': baseline.spectral_conv2.eval(session=baseline.sess)})
+```
+
 Tensorflow's FFT and IFFT gradients are inverses of one another.
 To confirm this, the following code should be added to `conv2d()`
 ```python
