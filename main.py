@@ -53,6 +53,8 @@ class FFTConvTest:
         return sum([sum([reduce(lambda x, y: x * y, l.get_shape().as_list() or [1]) for l in e]) for e in
                     [tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)]])
 
+
+
     def fft_conv(self, source, filters, width, height, stride, activation='relu', name='fft_conv'):
         channels = source.get_shape().as_list()[3]
 
@@ -245,6 +247,8 @@ class FFTConvTest:
             conv_op = self.fft_conv
         elif operations == 'fft_pure':
             conv_op = self.fft_conv_pure
+        elif operations == 'fft3d':
+            conv_op = self.fft3d_conv
 
         # Handle forced initialization
         self.initialization = initialization
@@ -277,7 +281,7 @@ class FFTConvTest:
         cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
 
     def train(self):
-        for _ in tqdm(range(5000)):
+        for _ in tqdm(range(1000)):
             images, labels = self.mnist.train.next_batch(50)
 
             self.visualize_filters(self.spectral_conv1, self.spatial_conv1)
@@ -290,11 +294,14 @@ import time
 if __name__ == "__main__":
     baseline = FFTConvTest(operations='conv')
     print("Baseline Accuracy: {}".format(baseline.train()))
-    #
-    # fft = FFTConvTest(operations='fft')
-    # print("FFT Accuracy: {}".format(fft.train()))
 
-    fftpure = FFTConvTest(operations='fft_pure')
-    print("FFTPure Accuracy: {}".format(fftpure.train()))
+    fft = FFTConvTest(operations='fft')
+    print("FFT Accuracy: {}".format(fft.train()))
+
+    fft3d = FFTConvTest(operations='fft3d')
+    print("FFTPure Accuracy: {}".format(fft3d.train()))
+
+    # fftpure = FFTConvTest(operations='fft_pure')
+    # print("FFTPure Accuracy: {}".format(fftpure.train()))
 
     time.sleep(30)

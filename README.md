@@ -29,14 +29,14 @@ with:
 fft = FFTConvTest(operations='fft', initialization={'conv1': baseline.spectral_conv1.eval(session=baseline.sess),
                                                            'conv2': baseline.spectral_conv2.eval(session=baseline.sess)})
 ```
-
+---
 Tensorflow's FFT and IFFT gradients are inverses of one another.
 To confirm this, the following code should be added to `conv2d()`
 ```python
 spatial_filter_fft = tf.real(tf.batch_ifft2d(tf.batch_fft2d(tf.complex(spatial_filter_for_fft, spatial_filter_for_fft * 0.0))))
 spatial_filter = tf.transpose(spatial_filter_fft, [2, 3, 0, 1])
 ```
-
+---
 Tensorflow's FFT and IFFT  operations are equivalent to numpy. 
 To confirm this, the following code should be added to `train()`.
 ```python
@@ -53,4 +53,41 @@ if np.abs(np.max(pixel) - np.max(freq_to_pixel)) > 1e-5 and np.abs(np.min(freq.r
                                                                               np.max(freq.real),
                                                                               np.min(pixel_to_freq),
                                                                               np.max(pixel_to_freq))
+```
+---
+3d FFTs do not seem to help. Even though normal `tf.nn.conv2d()` convolutions appear to be 3d (height, width, channel)
+applying `tf.batch_fft3d()` instead of the `tf.batch_fft2d` does not learn valuable filters.
+To confirm this, the following code should be added to `FFTConvTest` or replace `FFTConvTest.fft_conv()` entirely
+```
+def fft3d_conv(self, source, filters, width, height, stride, activation='relu', name='fft_conv'):
+        channels = source.get_shape().as_list()[3]
+
+    with tf.variable_scope(name):
+        init = self.random_spatial_to_spectral(filters, channels, height, width)
+
+        if name in self.initialization:
+            init = self.initialization[name]
+
+        # w_real = tf.Variable(init.real, dtype=tf.float32, name='real')
+        # w_imag = tf.Variable(init.imag, dtype=tf.float32, name='imag')
+        # w = tf.cast(tf.complex(w_real, w_imag), tf.complex64)
+
+        w = self.spectral_to_variable(init)
+        b = tf.Variable(tf.constant(0.1, shape=[filters]))
+
+    # Transform the spectral parameters into a spatial filter
+    # and reshape for tf.nn.conv2d
+
+    complex_spatial_filter = tf.batch_ifft3d(w)
+    spatial_filter = tf.real(complex_spatial_filter)
+    spatial_filter = tf.transpose(spatial_filter, [2, 3, 1, 0])
+
+    w = tf.transpose(w, [1, 0, 2, 3])
+
+    conv = tf.nn.conv2d(source, spatial_filter, strides=[1, stride, stride, 1], padding='SAME')
+    output = tf.nn.bias_add(conv, b)
+    output = tf.nn.relu(output) if activation is 'relu' else output
+
+    return output, spatial_filter, w
+    
 ```
