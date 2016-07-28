@@ -19,6 +19,11 @@ conda install opencv
 Currently, the spectral parametrization is resulting in filters that are inferior to the spatial parametrization and spectral pooling has not been implemented
 
 # Findings and Tests
+
+L1 Regularizing in the spectral domain results in sparse spectral representations of spatial features (as expected) and significantly cleans up the spatial representations.
+
+---
+
 Initializing spectral filters to be the final filter learned by the spatial parameterization is stable.
 To confirm this, the following code in the main loop should be replaced:
 ```
@@ -56,7 +61,7 @@ if np.abs(np.max(pixel) - np.max(freq_to_pixel)) > 1e-5 and np.abs(np.min(freq.r
 ```
 ---
 3d FFTs do not seem to help. Even though normal `tf.nn.conv2d()` convolutions appear to be 3d (height, width, channel)
-applying `tf.batch_fft3d()` instead of the `tf.batch_fft2d` does not learn valuable filters.
+applying `tf.batch_fft3d()` instead of the `tf.batch_fft2d` does not learn valuable filters, although the filters are sparse and result in structured spatial filters.
 To confirm this, the following code should be added to `FFTConvTest` or replace `FFTConvTest.fft_conv()` entirely
 ```
 def fft3d_conv(self, source, filters, width, height, stride, activation='relu', name='fft_conv'):
@@ -91,3 +96,7 @@ def fft3d_conv(self, source, filters, width, height, stride, activation='relu', 
     return output, spatial_filter, w
     
 ```
+---
+Parameterizing a pure FFT implementation of convolution (that is, doing point-wise multiplication in the spectral domain) in
+the spatial domain results in sparse features, but does not produce filters comparable to normal spatial convolution.
+To confirm this, uncomment `Option 3` in `FFTConvTest.fft_conv_pure()`

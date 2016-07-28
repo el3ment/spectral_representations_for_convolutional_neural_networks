@@ -10,7 +10,61 @@ if sys.version_info >= (3, 0):
     from functools import reduce
 
 class FFTConvTest:
+
+    def __init__(self, operations, initialization={}):
+        # Load MNIST data
+        self.mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.9, allow_growth=True)
+        self.sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+
+        # Setup inputs into the network for images and targets
+        self.image_vector = tf.placeholder(tf.float32, shape=[None, 784])
+        self.one_hot_class = tf.placeholder(tf.float32, shape=[None, 10])
+
+        # Reshape MNIST vectors into images, and center
+        self.image_matrix = tf.reshape(self.image_vector, shape=[-1, 28, 28, 1]) - .5
+
+        # Switch between a network with FFT convolutions
+        conv_op = self.conv2d
+        if operations == 'fft':
+            conv_op = self.fft_conv
+        elif operations == 'fft_pure':
+            conv_op = self.fft_conv_pure
+        elif operations == 'fft3d':
+            conv_op = self.fft3d_conv
+
+        # Handle forced initialization
+        self.initialization = initialization
+
+        # Build network
+        conv1, self.spatial_conv1, self.spectral_conv1 = conv_op(self.image_matrix, filters=15, width=10, height=10,
+                                                                 stride=1, name='conv1')
+        pool1 = self.maxpool2d(conv1, 2, 2)
+        conv2, self.spatial_conv2, self.spectral_conv2 = conv_op(pool1, filters=1, width=10, height=10,
+                                                                 stride=1, name='conv2')
+        pool2 = self.maxpool2d(conv2, 2, 2)
+        fc1 = self.linear(self.flatten(pool2), 1024, name='fft_fc1')
+        output = self.linear(fc1, 10, activation='none', name='fft_output')
+
+        print("Model Free Parameters: {}".format(self.variables()))
+
+        # Build cost and optimizer
+        self.output_softmax = tf.nn.softmax(output)
+        cross_entropy = tf.reduce_mean(-tf.reduce_sum(self.one_hot_class * tf.log(self.output_softmax), reduction_indices=[1]))
+        regularization = tf.reduce_mean(tf.abs(self.spectral_conv1)) + tf.reduce_mean(tf.abs(self.spectral_conv2))
+        self.error = cross_entropy + regularization
+        optimizer = tf.train.RMSPropOptimizer(0.0002)
+        self.train_step = optimizer.minimize(self.error)
+
+        self.sess.run(tf.initialize_all_variables())
+
+        # Initialize visualization window
+        cv2.startWindowThread()
+        self.window_name = "preview-operations=" + operations
+        cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
+
     def conv2d(self, source, filters, width, height, stride, activation='relu', name='conv2d'):
+        # Normal convolution layer
         in_channels = source.get_shape().as_list()[3]
 
         with tf.variable_scope(name):
@@ -31,6 +85,7 @@ class FFTConvTest:
         return output, spatial_filter, spectral_filter
 
     def linear(self, source, neurons, activation='relu', name='linear'):
+        # Normal fully connected layer
         in_channels = source.get_shape().as_list()[1]
 
         with tf.variable_scope(name):
@@ -43,9 +98,11 @@ class FFTConvTest:
         return output
 
     def flatten(self, source):
+        # Converts a tensor into a vector
         return tf.reshape(source, [-1, np.prod(source.get_shape().as_list()[1:])])
 
     def maxpool2d(self, source, width, stride):
+        # Applies maxpool operation to a tensor
         return tf.nn.max_pool(source, ksize=[1, width, width, 1], strides=[1, stride, stride, 1], padding='SAME')
 
     def variables(self):
@@ -53,9 +110,11 @@ class FFTConvTest:
         return sum([sum([reduce(lambda x, y: x * y, l.get_shape().as_list() or [1]) for l in e]) for e in
                     [tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)]])
 
-
-
     def fft_conv(self, source, filters, width, height, stride, activation='relu', name='fft_conv'):
+        # This function implements a convolution using a spectrally parameterized filter with the normal
+        # tf.nn.conv2d() convolution operation. This is done by transforming the spectral filter to spatial
+        # via tf.batch_ifft2d()
+
         channels = source.get_shape().as_list()[3]
 
         with tf.variable_scope(name):
@@ -64,11 +123,15 @@ class FFTConvTest:
             if name in self.initialization:
                 init = self.initialization[name]
 
+            # Option 1: Over-Parameterize fully in the spectral domain
             w_real = tf.Variable(init.real, dtype=tf.float32, name='real')
             w_imag = tf.Variable(init.imag, dtype=tf.float32, name='imag')
             w = tf.cast(tf.complex(w_real, w_imag), tf.complex64)
 
-            #w = self.spectral_to_variable(init)
+            # Option 2: Parameterize only 'free' parameters in the spectral domain to enforce conjugate symmetry
+            #           This is very slow.
+            # w = self.spectral_to_variable(init)
+
             b = tf.Variable(tf.constant(0.1, shape=[filters]))
 
         # Transform the spectral parameters into a spatial filter
@@ -83,7 +146,8 @@ class FFTConvTest:
 
         return output, spatial_filter, w
 
-    def batch_fftshift(self, tensor):
+    def batch_fftshift2d(self, tensor):
+        # Shifts high frequency elements into the center of the filter
         indexes = len(tensor.get_shape()) - 1
         top, bottom = tf.split(indexes, 2, tensor)
         tensor = tf.concat(indexes, [bottom, top])
@@ -93,6 +157,9 @@ class FFTConvTest:
         return tensor
 
     def fft_conv_pure(self, source, filters, width, height, stride, activation='relu', name='fft_conv'):
+        # This function applies the convolutional filter, which is stored in the spectral domain, as a element-wise
+        # multiplication between the filter and the image (which has been transformed to the spectral domain)
+
         _, input_height, input_width, channels = source.get_shape().as_list()
 
         with tf.variable_scope(name):
@@ -101,14 +168,25 @@ class FFTConvTest:
             if name in self.initialization:
                 init = self.initialization[name]
 
+            # Option 1: Over-Parameterize fully in the spectral domain
             w_real = tf.Variable(init.real, dtype=tf.float32, name='real')
             w_imag = tf.Variable(init.imag, dtype=tf.float32, name='imag')
             w = tf.cast(tf.complex(w_real, w_imag), tf.complex64)
 
+            # Option 2: Parameterize only 'free' parameters in the spectral domain to enforce conjugate symmetry
+            #           This is very slow.
             # w = self.spectral_to_variable(init)
 
-            w = tf.expand_dims(w, 0)  # batch, channels, filters, height, width
+            # Option 3: Parameterize in the spatial domain
+            # w = tf.get_variable("weight", [channels, filters, height, width],
+            #                                  initializer=tf.truncated_normal_initializer(0, stddev=0.01),
+            #                                  dtype=tf.float32)
+            # w = tf.batch_fft2d(tf.complex(w, w*0.0))
+
             b = tf.Variable(tf.constant(0.1, shape=[filters]))
+
+        # Add batch as a dimension for later broadcasting
+        w = tf.expand_dims(w, 0)  # batch, channels, filters, height, width
 
         # Prepare the source tensor for FFT
         source = tf.transpose(source, [0, 3, 1, 2])  # batch, channel, height, width
@@ -119,16 +197,19 @@ class FFTConvTest:
         source_fft = tf.tile(source_fft, [1, 1, filters, 1, 1])
 
         # Shift, then pad the filter for element-wise multiplication, then unshift
-        w_shifted = self.batch_fftshift(w)
+        w_shifted = self.batch_fftshift2d(w)
         height_pad = (input_height - height) // 2
         width_pad = (input_width - width) // 2
-        w_padded = tf.pad(w_shifted, [[0, 0], [0, 0], [0, 0], [height_pad, height_pad], [width_pad, width_pad]], mode='CONSTANT')
-        w_padded = self.batch_fftshift(w_padded)
+        w_padded = tf.pad(w_shifted, [[0, 0], [0, 0], [0, 0], [height_pad, height_pad], [width_pad, width_pad]],
+                          mode='CONSTANT')  # Pads with zeros
+        w_padded = self.batch_fftshift2d(w_padded)
 
         # Convolve with the filter in spectral domain
         conv = source_fft * tf.conj(w_padded)
 
         # Sum out the channel dimension, and prepare for bias_add
+        # Note: The decision to sum out the channel dimension seems intuitive, but
+        #       not necessarily theoretically sound.
         conv = tf.real(tf.batch_ifft2d(conv))
         conv = tf.reduce_sum(conv, reduction_indices=1)  # batch, filters, height, width
         conv = tf.transpose(conv, [0, 2, 3, 1])  # batch, height, width, filters
@@ -228,69 +309,18 @@ class FFTConvTest:
         return accuracy.eval(session=self.sess, feed_dict={self.image_vector: self.mnist.test.images[:1000],
                                                            self.one_hot_class: self.mnist.test.labels[:1000]})
 
-    def __init__(self, operations, initialization={}):
-        # Load MNIST data
-        self.mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.9, allow_growth=True)
-        self.sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
-
-        # Setup inputs into the network for images and targets
-        self.image_vector = tf.placeholder(tf.float32, shape=[None, 784])
-        self.one_hot_class = tf.placeholder(tf.float32, shape=[None, 10])
-
-        # Reshape MNIST vectors into images, and center
-        self.image_matrix = tf.reshape(self.image_vector, shape=[-1, 28, 28, 1]) - .5
-
-        # Switch between a network with FFT convolutions
-        conv_op = self.conv2d
-        if operations == 'fft':
-            conv_op = self.fft_conv
-        elif operations == 'fft_pure':
-            conv_op = self.fft_conv_pure
-        elif operations == 'fft3d':
-            conv_op = self.fft3d_conv
-
-        # Handle forced initialization
-        self.initialization = initialization
-
-        # Build network
-        conv1, self.spatial_conv1, self.spectral_conv1 = conv_op(self.image_matrix, filters=15, width=10, height=10,
-                                                                 stride=1, name='conv1')
-        pool1 = self.maxpool2d(conv1, 2, 2)
-        conv2, self.spatial_conv2, self.spectral_conv2 = conv_op(pool1, filters=1, width=10, height=10,
-                                                                 stride=1, name='conv2')
-        pool2 = self.maxpool2d(conv2, 2, 2)
-        fc1 = self.linear(self.flatten(pool2), 1024, name='fft_fc1')
-        output = self.linear(fc1, 10, activation='none', name='fft_output')
-
-        print("Model Free Parameters: {}".format(self.variables()))
-
-        # Build cost and optimizer
-        self.output_softmax = tf.nn.softmax(output)
-        cross_entropy = tf.reduce_mean(-tf.reduce_sum(self.one_hot_class * tf.log(self.output_softmax), reduction_indices=[1]))
-        regularization = tf.reduce_mean(tf.abs(self.spectral_conv1)) + tf.reduce_mean(tf.abs(self.spectral_conv2))
-        self.error = cross_entropy + regularization
-        optimizer = tf.train.RMSPropOptimizer(0.0002)
-        self.train_step = optimizer.minimize(self.error)
-
-        self.sess.run(tf.initialize_all_variables())
-
-        # Initialize visualization window
-        cv2.startWindowThread()
-        self.window_name = "preview-operations=" + operations
-        cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
-
     def train(self):
         for _ in tqdm(range(1000)):
             images, labels = self.mnist.train.next_batch(50)
 
             self.visualize_filters(self.spectral_conv1, self.spatial_conv1)
 
-            _, error = self.sess.run([self.train_step, self.error], feed_dict={self.image_vector: images, self.one_hot_class: labels})
+            _, error = self.sess.run([self.train_step, self.error], feed_dict={self.image_vector: images,
+                                                                               self.one_hot_class: labels})
 
         return self.accuracy()
 
-import time
+
 if __name__ == "__main__":
     baseline = FFTConvTest(operations='conv')
     print("Baseline Accuracy: {}".format(baseline.train()))
@@ -298,10 +328,5 @@ if __name__ == "__main__":
     fft = FFTConvTest(operations='fft')
     print("FFT Accuracy: {}".format(fft.train()))
 
-    fft3d = FFTConvTest(operations='fft3d')
-    print("FFTPure Accuracy: {}".format(fft3d.train()))
-
-    # fftpure = FFTConvTest(operations='fft_pure')
-    # print("FFTPure Accuracy: {}".format(fftpure.train()))
-
-    time.sleep(30)
+    fftpure = FFTConvTest(operations='fft_pure')
+    print("FFTPure Accuracy: {}".format(fftpure.train()))
