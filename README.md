@@ -18,7 +18,13 @@ conda install opencv
 # Status
 Currently, the spectral parametrization is resulting in filters that are inferior to the spatial parametrization and spectral pooling has not been implemented
 
-# Findings and Tests
+# Reasons why it might be failing
+
+- Enforcing conjugate symetry is done via a slow method of creating individual variables for each of the free parameters in `spectral_to_variable()`. Currently 
+this is turned off (look for `Option 2` in the code) because it didn't seem to improve results dramatically and is very slow. I may be implementing this incorrectly.
+- Tensorflow may have a weirdness [in the way they implement the gradient for ifft in `_BatchIFFTGrad()`](https://github.com/tensorflow/tensorflow/blob/73ced9d797056c7e67a06ed2098dd809d85ec44a/tensorflow/python/ops/math_grad.py)
+
+# Findings and other tests
 
 L1 Regularizing in the spectral domain results in sparse spectral representations of spatial features (as expected) and significantly cleans up the spatial representations.
 
