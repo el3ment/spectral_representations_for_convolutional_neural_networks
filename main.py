@@ -11,7 +11,7 @@ if sys.version_info >= (3, 0):
 
 class FFTConvTest:
 
-    def __init__(self, operations, initialization=None, learning_rate=0.0002, spectral_regularization_alpha=2):
+    def __init__(self, operations, initialization=None, learning_rate=0.0002, spectral_regularization_alpha=2.0):
         # Load MNIST data
         self.mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.9, allow_growth=True)
@@ -347,8 +347,8 @@ if __name__ == "__main__":
     baseline = FFTConvTest(operations='conv', spectral_regularization_alpha=1)
     print("Baseline Accuracy: {}".format(baseline.train()))
 
-    fft = FFTConvTest(operations='fft', spectral_regularization_alpha=2)
+    fft = FFTConvTest(operations='fft', spectral_regularization_alpha=2.3)
     print("FFT Accuracy: {}".format(fft.train()))
 
-    fftpure = FFTConvTest(operations='fft_pure', spectral_regularization_alpha=2)
+    fftpure = FFTConvTest(operations='fft_pure', spectral_regularization_alpha=1)
     print("FFTPure Accuracy: {}".format(fftpure.train()))

@@ -18,7 +18,7 @@ In addition, spectral pooling remains to be implemented, and a faster [implement
 
 
 # Theory / Questions
-- What non-linear functions maintain conjugate symmetry (which would enable a fully spectral network)?
+- What non-linear activation functions maintain conjugate symmetry (and would enable a fully spectral network)?
 - What is the proper way to handle the channel dimension when doing a pure spectral convolution?
 - Is there a need to handle the difference between convolution and cross-correlation?
 - How should we scale the spectral regularization parameter with filter height/width?
@@ -27,13 +27,13 @@ In addition, spectral pooling remains to be implemented, and a faster [implement
 
 
 # Install
-### Installing Tensorflow with GPU support:
+### Installing Tensorflow with GPU support
 ```bash
 export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.9.0rc0-cp27-none-linux_x86_64.whl
 sudo pip install --upgrade $TF_BINARY_URL
 ```
 
-### Installing python:
+### Installing python
 It's best to install [Anaconda](https://www.continuum.io/downloads) which comes complete with numpy and conda (used for opencv install)
 
 ### Installing needed python packages
