@@ -15,15 +15,30 @@ pip install tqdm
 conda install opencv
 ```
 
-# Status
-Currently, the spectral parametrization is resulting in filters that are inferior to the spatial parametrization and spectral pooling has not been implemented
+# Next Steps
+Spectral parametrization now results in accuracies that are comparable to the baseline! 
 
-# Reasons why it might be failing
+Currently, the way we are enforcing conjugate symmetry is via two manually constructed tensors that each contain half free and half dependent parameters. 
+Unfortunately this is extremely slow, but it is accurate. The optimal solution to this slowness problem is to use real-valued FFT and iFFT functions so that steps
+in the direction of the gradient will always result in valid spectral representations. Implementing these real-valued FFT functions will be much faster because they only
+require half as many FFT operations, *and* there is no need to call the `RecoverMap`, `RemoveRedundency`, and `TreatCornerCases` functions which each require additional loops through
+the tensor. 
 
-- Enforcing conjugate symetry is done via a slow method of creating individual variables for each of the free parameters in `spectral_to_variable()`. Currently 
-this is turned off (look for `Option 2` in the code) because it didn't seem to improve results dramatically and is very slow. I may be implementing this incorrectly.
-- Tensorflow may have a weirdness [in the way they implement the gradient for ifft in `_BatchIFFTGrad()`](https://github.com/tensorflow/tensorflow/blob/73ced9d797056c7e67a06ed2098dd809d85ec44a/tensorflow/python/ops/math_grad.py)
-- I am not directly accounting for 
+The next step then is to implement real-valued FFT functions in Tensorflow. To do this, we will need to [add a new tensorflow op](https://www.tensorflow.org/versions/r0.9/how_tos/adding_an_op/index.html) using the 
+[cufftExecR2C() and cufftExecC2R()](http://docs.nvidia.com/cuda/cufft/index.html#fft-types) functions from cuda. This likely involves simply adding a new op to (fft_ops.cc)[https://github.com/tensorflow/tensorflow/blob/d42facc3cc9611f0c9722c81551a7404a0bd3f6b/tensorflow/core/kernels/fft_ops.cc]
+that uses a slightly modified `DoFFT()` function that calls R2C and C2R instead.
+ 
+In addition, spectral pooling remains to be implemented, and a faster [implementation of fftshift](https://devtalk.nvidia.com/default/topic/515723/does-cuda-provide-fftshift-function-like-matlab-/) leveraged (or apply the padding directly to the unshifted vector)
+
+
+# Theory / Questions
+- What non-linear functions maintain conjugate symmetry (which would enable a fully spectral network)?
+- What is the proper way to handle the channel dimension when doing a pure spectral convolution?
+- Is there a need to handle the difference between convolution and cross-correlation?
+- How should we scale the spectral regularization parameter with filter height/width?
+- How does the regularization of a spectrally parameterized filter relate to the regularization of a spatially parameterized filter?
+- How does the gradient of a spectrally parameterized filter relate to the regularization of a spatially parameterized filter, and how does this impact learning rate?
+
 
 # Findings and other tests
 
@@ -31,7 +46,7 @@ L1 Regularizing in the spectral domain results in sparse spectral representation
 
 ---
 
-Initializing spectral filters to be the final filter learned by the spatial parameterization is stable.
+Initializing spectral filters to be the final filter learned by the spatial parametrization is stable.
 To confirm this, the following code in the main loop should be replaced:
 ```
 fft = FFTConvTest(operations='fft')

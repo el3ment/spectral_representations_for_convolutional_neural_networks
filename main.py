@@ -11,7 +11,7 @@ if sys.version_info >= (3, 0):
 
 class FFTConvTest:
 
-    def __init__(self, operations, initialization={}):
+    def __init__(self, operations, initialization=None, learning_rate=0.0002, spectral_regularization_alpha=2):
         # Load MNIST data
         self.mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=.9, allow_growth=True)
@@ -30,17 +30,15 @@ class FFTConvTest:
             conv_op = self.fft_conv
         elif operations == 'fft_pure':
             conv_op = self.fft_conv_pure
-        elif operations == 'fft3d':
-            conv_op = self.fft3d_conv
 
         # Handle forced initialization
-        self.initialization = initialization
+        self.initialization = initialization if initialization is not None else {}
 
         # Build network
         conv1, self.spatial_conv1, self.spectral_conv1 = conv_op(self.image_matrix, filters=15, width=10, height=10,
                                                                  stride=1, name='conv1')
         pool1 = self.maxpool2d(conv1, 2, 2)
-        conv2, self.spatial_conv2, self.spectral_conv2 = conv_op(pool1, filters=1, width=10, height=10,
+        conv2, self.spatial_conv2, self.spectral_conv2 = conv_op(pool1, filters=1, width=6, height=6,
                                                                  stride=1, name='conv2')
         pool2 = self.maxpool2d(conv2, 2, 2)
         fc1 = self.linear(self.flatten(pool2), 1024, name='fft_fc1')
@@ -52,8 +50,8 @@ class FFTConvTest:
         self.output_softmax = tf.nn.softmax(output)
         cross_entropy = tf.reduce_mean(-tf.reduce_sum(self.one_hot_class * tf.log(self.output_softmax), reduction_indices=[1]))
         regularization = tf.reduce_mean(tf.abs(self.spectral_conv1)) + tf.reduce_mean(tf.abs(self.spectral_conv2))
-        self.error = cross_entropy + regularization
-        optimizer = tf.train.RMSPropOptimizer(0.0002)
+        self.error = cross_entropy + spectral_regularization_alpha * regularization
+        optimizer = tf.train.AdamOptimizer(learning_rate)
         self.train_step = optimizer.minimize(self.error)
 
         self.sess.run(tf.initialize_all_variables())
@@ -124,13 +122,13 @@ class FFTConvTest:
                 init = self.initialization[name]
 
             # Option 1: Over-Parameterize fully in the spectral domain
-            w_real = tf.Variable(init.real, dtype=tf.float32, name='real')
-            w_imag = tf.Variable(init.imag, dtype=tf.float32, name='imag')
-            w = tf.cast(tf.complex(w_real, w_imag), tf.complex64)
+            # w_real = tf.Variable(init.real, dtype=tf.float32, name='real')
+            # w_imag = tf.Variable(init.imag, dtype=tf.float32, name='imag')
+            # w = tf.cast(tf.complex(w_real, w_imag), tf.complex64)
 
             # Option 2: Parameterize only 'free' parameters in the spectral domain to enforce conjugate symmetry
             #           This is very slow.
-            # w = self.spectral_to_variable(init)
+            w = self.spectral_to_variable(init)
 
             b = tf.Variable(tf.constant(0.1, shape=[filters]))
 
@@ -156,6 +154,16 @@ class FFTConvTest:
 
         return tensor
 
+    def batch_ifftshift2d(self, tensor):
+        # Shifts high frequency elements into the center of the filter
+        indexes = len(tensor.get_shape()) - 1
+        left, right = tf.split(indexes - 1, 2, tensor)
+        tensor = tf.concat(indexes - 1, [right, left])
+        top, bottom = tf.split(indexes, 2, tensor)
+        tensor = tf.concat(indexes, [bottom, top])
+
+        return tensor
+
     def fft_conv_pure(self, source, filters, width, height, stride, activation='relu', name='fft_conv'):
         # This function applies the convolutional filter, which is stored in the spectral domain, as a element-wise
         # multiplication between the filter and the image (which has been transformed to the spectral domain)
@@ -169,13 +177,13 @@ class FFTConvTest:
                 init = self.initialization[name]
 
             # Option 1: Over-Parameterize fully in the spectral domain
-            w_real = tf.Variable(init.real, dtype=tf.float32, name='real')
-            w_imag = tf.Variable(init.imag, dtype=tf.float32, name='imag')
-            w = tf.cast(tf.complex(w_real, w_imag), tf.complex64)
+            # w_real = tf.Variable(init.real, dtype=tf.float32, name='real')
+            # w_imag = tf.Variable(init.imag, dtype=tf.float32, name='imag')
+            # w = tf.cast(tf.complex(w_real, w_imag), tf.complex64)
 
             # Option 2: Parameterize only 'free' parameters in the spectral domain to enforce conjugate symmetry
             #           This is very slow.
-            # w = self.spectral_to_variable(init)
+            w = self.spectral_to_variable(init)
 
             # Option 3: Parameterize in the spatial domain
             # w = tf.get_variable("weight", [channels, filters, height, width],
@@ -202,7 +210,7 @@ class FFTConvTest:
         width_pad = (input_width - width) // 2
         w_padded = tf.pad(w_shifted, [[0, 0], [0, 0], [0, 0], [height_pad, height_pad], [width_pad, width_pad]],
                           mode='CONSTANT')  # Pads with zeros
-        w_padded = self.batch_fftshift2d(w_padded)
+        w_padded = self.batch_ifftshift2d(w_padded)
 
         # Convolve with the filter in spectral domain
         conv = source_fft * tf.conj(w_padded)
@@ -229,15 +237,16 @@ class FFTConvTest:
 
     def is_valid_spectral(self, tensor):
         # Check a tensor for conjugate symmetry and real-valuedness
+        tensor = np.fft.fftshift(tensor, [2, 3])
+
         filters, channels, height, width = tensor.shape
         for f in range(filters):
             for c in range(channels):
                 for h in range(height):
                     for w in range(width):
-                        if np.abs(tensor[f, c, h, w] - np.conjugate(
-                                tensor[f, c, (height - h) % height, (width - w) % width])) > 1e-8:
-                            return False, np.abs(tensor[f, c, h, w] - np.conjugate(
-                                tensor[f, c, (height - h) % height, (width - w) % width])), w, h
+                        p = tensor[f, c, (height - h) % height, (width - w) % width]
+                        if np.abs(tensor[f, c, h, w] - np.conjugate(p)) > 0.0:
+                            return False, np.abs(tensor[f, c, h, w] - np.conjugate(p)), (h, w)
 
         return True
 
@@ -256,24 +265,37 @@ class FFTConvTest:
 
         channels, filters, height, width = init.shape
 
-        reals = np.full(init.shape, 999.0).tolist()
-        imags = np.full(init.shape, 999.0).tolist()
+        hheight = height // 2
+        hwidth = width // 2
+
+        assert height % 2 == 0 and width % 2 == 0, 'filter size must be even (for now)'
+
+        init = np.fft.fftshift(init, [2, 3])
+
+        reals = init.real.tolist()
+        imags = init.imag.tolist()
 
         for c in range(channels):
             for f in range(filters):
+                I = [(0, 0), (hheight, 0), (0, hwidth), (hheight, hwidth)]
+
+                for h, w in I:
+                    reals[c][f][h][w] = tf.Variable(init[c, f, h, w].real)
+                    imags[c][f][h][w] = 0.0
+
                 for h in range(height):
                     for w in range(width):
-                        if h == (height - h) % height and w == (width - w) % width:
-                            imags[c][f][h][w] = 0.0
-                        elif imags[c][f][h][w] == 999.0:
-                            imags[c][f][h][w] = tf.Variable(init[c, f, h, w].imag)
-                            imags[c][f][(height - h) % height][(width - w) % width] = -imags[c][f][h][w]
 
-                        if reals[c][f][h][w] == 999.0:
+                        if (h, w) not in I:
+                            imags[c][f][h][w] = tf.Variable(init[c, f, h, w].imag)
                             reals[c][f][h][w] = tf.Variable(init[c, f, h, w].real)
                             reals[c][f][(height - h) % height][(width - w) % width] = reals[c][f][h][w]
+                            imags[c][f][(height - h) % height][(width - w) % width] = -imags[c][f][h][w]
 
-        return tf.complex(tf.convert_to_tensor(reals), tf.convert_to_tensor(imags))
+                            I += [(h, w), ((height - h) % height, (width - w) % width)]
+
+
+        return self.batch_ifftshift2d(tf.complex(tf.convert_to_tensor(reals), tf.convert_to_tensor(imags)))
 
     def visualize_filters(self, spectral, spatial):
         # Flattens a weight matrix into a 2D image representation with channels and filters
@@ -322,11 +344,11 @@ class FFTConvTest:
 
 
 if __name__ == "__main__":
-    baseline = FFTConvTest(operations='conv')
+    baseline = FFTConvTest(operations='conv', spectral_regularization_alpha=1)
     print("Baseline Accuracy: {}".format(baseline.train()))
 
-    fft = FFTConvTest(operations='fft')
+    fft = FFTConvTest(operations='fft', spectral_regularization_alpha=2)
     print("FFT Accuracy: {}".format(fft.train()))
 
-    fftpure = FFTConvTest(operations='fft_pure')
+    fftpure = FFTConvTest(operations='fft_pure', spectral_regularization_alpha=2)
     print("FFTPure Accuracy: {}".format(fftpure.train()))
