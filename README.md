@@ -1,20 +1,6 @@
 # Purpose
 This repository is an implementation of the paper [Spectral Representations for Convolutional Neural Networks](http://arxiv.org/abs/1506.03767) in [Tensorflow](http://tensorflow.org/)
 
-# Install
-### Installing Tensorflow with GPU support:
-```bash
-export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.9.0rc0-cp27-none-linux_x86_64.whl
-sudo pip install --upgrade $TF_BINARY_URL
-```
-
-### Installing python packages:
-It's best to install [Anaconda](https://www.continuum.io/downloads) which comes with numpy
-```bash
-pip install tqdm
-conda install opencv
-```
-
 # Next Steps
 Spectral parametrization now results in accuracies that are comparable to the baseline! 
 
@@ -39,6 +25,22 @@ In addition, spectral pooling remains to be implemented, and a faster [implement
 - How does the regularization of a spectrally parameterized filter relate to the regularization of a spatially parameterized filter?
 - How does the gradient of a spectrally parameterized filter relate to the regularization of a spatially parameterized filter, and how does this impact learning rate?
 
+
+# Install
+### Installing Tensorflow with GPU support:
+```bash
+export TF_BINARY_URL=https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow-0.9.0rc0-cp27-none-linux_x86_64.whl
+sudo pip install --upgrade $TF_BINARY_URL
+```
+
+### Installing python:
+It's best to install [Anaconda](https://www.continuum.io/downloads) which comes complete with numpy and conda (used for opencv install)
+
+### Installing needed python packages
+```bash
+pip install tqdm
+conda install opencv
+```
 
 # Findings and other tests
 
