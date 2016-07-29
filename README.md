@@ -25,7 +25,7 @@ require half as many FFT operations, *and* there is no need to call the `Recover
 the tensor. 
 
 The next step then is to implement real-valued FFT functions in Tensorflow. To do this, we will need to [add a new tensorflow op](https://www.tensorflow.org/versions/r0.9/how_tos/adding_an_op/index.html) using the 
-[cufftExecR2C() and cufftExecC2R()](http://docs.nvidia.com/cuda/cufft/index.html#fft-types) functions from cuda. This likely involves simply adding a new op to (fft_ops.cc)[https://github.com/tensorflow/tensorflow/blob/d42facc3cc9611f0c9722c81551a7404a0bd3f6b/tensorflow/core/kernels/fft_ops.cc]
+[cufftExecR2C() and cufftExecC2R()](http://docs.nvidia.com/cuda/cufft/index.html#fft-types) functions from cuda. This likely involves simply adding a new op to [fft_ops.cc](https://github.com/tensorflow/tensorflow/blob/d42facc3cc9611f0c9722c81551a7404a0bd3f6b/tensorflow/core/kernels/fft_ops.cc)
 that uses a slightly modified `DoFFT()` function that calls R2C and C2R instead.
  
 In addition, spectral pooling remains to be implemented, and a faster [implementation of fftshift](https://devtalk.nvidia.com/default/topic/515723/does-cuda-provide-fftshift-function-like-matlab-/) leveraged (or apply the padding directly to the unshifted vector)
